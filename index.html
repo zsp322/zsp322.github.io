@@ -1,1 +1,172 @@
-"Hello World" 
+<!DOCTYPE html>
+<html>
+<head>
+    <title>COVID Data Visualization</title>
+    <!-- Include D3.js from the D3 CDN -->
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+</head>
+<body>
+    <!-- Your HTML content here -->
+    <div id="tooltip" style="position: absolute; display: none; background-color: white; padding: 10px; border: 1px solid black;"></div>
+    <div id="choropleth-map"></div>
+    <div id="bar-chart"></div>
+    <div id="dropdown"></div>
+    <div id="state-details"></div>
+    <script>
+        // Your D3.js code here
+        // define a width and height for your svg
+    let width = 1200,
+        height = 1000;
+
+    // create a new SVG element
+    let svg = d3.select("body")
+        .append("svg")
+        .attr("width", width)
+        .attr("height", height);
+
+    // define a geographical projection and a path generator
+
+
+    // define a color scale
+    // let color = d3.scaleQuantize()
+    //     .range(["rgb(237,248,233)","rgb(186,228,179)","rgb(116,196,118)","rgb(49,163,84)","rgb(0,109,44)"]);
+
+    // load the GeoJSON data
+    d3.json("us-states.json").then(function(geojson) {
+
+    // load the CSV data
+        d3.csv("01-01-2021.csv").then(function(data) {
+
+            let projection = d3.geoAlbersUsa().fitSize([width, height], geojson);
+            
+            let path = d3.geoPath().projection(projection);
+            // calculate the domain of the color scale
+            let color = d3.scaleSequential(d3.interpolatePlasma)
+                .domain([d3.min(data, d => +d.Confirmed), d3.median(data, d => +d.Confirmed)]);
+
+
+            let svgMap = d3.select("#choropleth-map")
+            .append("svg")
+            .attr("width", width)
+            .attr("height", height);
+            // draw the map
+            svgMap.selectAll("path")
+                .data(geojson.features)
+                .enter()
+                .append("path")
+                .attr("d", path)
+                .style("fill", function(d) {
+                    // get the data value for the current state
+                    let value = data.find(item => 
+                    {
+                        return item.Province_State.toLowerCase() == d.properties.name.toLowerCase()
+                    }
+                    ).Confirmed;
+
+                    // return the corresponding color or white if no data
+                    return value ? color(value) : "#fff";
+                })
+                .style("stroke", "#000"); // this adds a black border;
+
+
+
+
+
+            // Create the bar chart
+            let svgBar = d3.select("#bar-chart")
+                .append("svg")
+                .attr("width", width)
+                .attr("height", height);
+
+            // Bar Chart Code
+            // Create scales
+            let xScale = d3.scaleBand()
+                .domain(data.map(d => d.Province_State))
+                .range([0, width])
+                .padding(0.1);
+
+            let yScale = d3.scaleLinear()
+                .domain([0, d3.max(data, d => Math.max(d.Confirmed, d.Deaths, d.Recovered))])
+                .range([height, 0]);
+
+            // Create a group for each 'type' of data (confirmed, deaths, recoveries)
+            let types = ['Confirmed', 'Deaths', 'Recovered'];
+            let color2 = d3.scaleOrdinal(['blue', 'red', 'green']);
+
+            types.forEach(function(type, i) {
+                svgBar.selectAll(".bar-" + type)
+                    .data(data)
+                    .enter()
+                    .append("rect")
+                    .attr("class", "bar-" + type)
+                    .attr("x", d => xScale(d.Province_State))
+                    .attr("y", d => yScale(d[type]))
+                    .attr("width", xScale.bandwidth() / types.length)
+                    .attr("height", d => height - yScale(d[type]))
+                    .attr("fill", color2(type))
+                    .attr("transform", `translate(${i * xScale.bandwidth() / types.length}, 0)`)
+                    .on("mouseover", function(event, d) {
+                        d3.select("#tooltip")
+                            .style("display", "block")
+                            .style("left", event.pageX + "px")
+                            .style("top", event.pageY + "px")
+                            .html(`${d.Province_State}<br>${type}: ${d[type]}`);
+                    })
+                    .on("mouseout", function() {
+                        d3.select("#tooltip")
+                            .style("display", "none");
+                    });
+            });
+            svgBar.append("g")
+                .attr("transform", `translate(0, ${height})`)
+                .call(d3.axisBottom(xScale))
+                .selectAll("text")
+                .attr("transform", "rotate(-65)")
+                .style("text-anchor", "end");
+
+
+            let dropdown = d3.select("#dropdown")
+            .append("select")
+            .attr("name", "state-list");
+
+            let options = dropdown.selectAll("option")
+                .data(data)
+                .enter()
+                .append("option")
+                .text(d => d.Province_State)
+                .attr("value", d => d.Province_State);
+
+            dropdown.on("change", function(d) {
+                let selectedState = d3.select(this).property("value");
+                let stateData = data.filter(row => row.Province_State === selectedState)[0];
+                updateTable(stateData);
+            });
+
+            // Display the data for the selected state
+            function updateTable(stateData) {
+                // Remove the previous table, if it exists
+                d3.select("#state-details").selectAll("table").remove();
+
+                let table = d3.select("#state-details").append("table");
+                let tbody = table.append("tbody");
+
+                let rows = tbody.selectAll("tr")
+                    .data(Object.entries(stateData))
+                    .enter()
+                    .append("tr");
+
+                let cells = rows.selectAll("td")
+                    .data(d => d)
+                    .enter()
+                    .append("td")
+                    .text(d => d);
+            }
+
+
+            // Display data for the first state initially
+            updateTable(data[0]);
+        });
+    });
+    </script>
+</body>
+</html>
